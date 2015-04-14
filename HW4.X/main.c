@@ -143,7 +143,7 @@ int main(void)
 
     char message[50]; //char array to OLED message
     int number = 1337; //number to be written in message
-    int i,j,k=0; //CounterOk  variables
+    int i,j,k=0; //Counter variables
 
     sprintf(message,"Hello world %d!",number);
 
