@@ -10,6 +10,7 @@
 #include"i2c_display.h"
 #include"i2c_master_int.h"
 #include"ascii.h"
+#include"accel.h"
 
 
 // DEVCFG0
@@ -125,42 +126,19 @@ int main(void)
     IFS0bits.T1IF = 0;              // INT step 5: clear interrupt flag
     IEC0bits.T1IE = 1;              // INT step 6: enable interrupt
 
+    
     __builtin_enable_interrupts(); //re enable interrupts after configuration is complete
 
-
+    acc_setup(); //Set-up accelorometer chip
     display_init();
 
-    //Code from class to draw diagonal lines
-//    int row, col;
-//    for(col = 0; col < WIDTH; ++col) { // draw a diagonal line
-//    row = col % HEIGHT; // when we hit the last row
-//    display_pixel_set(row,col,1); // start from row 0, but keep advancing
-//    // the column
-//    display_draw(); // we draw every update, to display progress.
-//    }
-//    display_draw();
-
+    short accels[3]; // accelerations for the 3 axes
+    short mags[3]; // magnetometer readings for the 3 axes
+    short temp;
 
     char message[50]; //char array to OLED message
-    int number = 1337; //number to be written in message
     int i,j,k=0; //Counter variables
-
-    sprintf(message,"Hello world %d!",number);
-
-    int row = 28,col = 32;//Starting row and column for text
-    while(message[k]){//While loop runs until terminating character '/0' is read from the string
-     for(i=0;i<=4;i++){//Loop runs through the 4 'byte-columns' defined in ascii.h
-     for(j=0;j<7;j++){//Loop runs through the 8 lines of each 'byte-column'
-        display_pixel_set(row+j,col+i+5*k,1&(ASCII[message[k]-0x20][i])>>j);//Create Bitmask and write to buffer
-        display_draw();//draw every update to display progress
-     }
-     }
-    k++;}
-
-    display_draw();
-
-
-
+    
     // Main while loop
     while (1)
     {
@@ -176,6 +154,27 @@ int main(void)
 //        unsigned int ADCval;
 //        ADCval = readADC();            // read ADC (0-1024)
 //        OC1RS =  40000* ADCval/1024;   //convert ADV calue to duty cycle
+
+        // read the accelerometer from all three axes
+        // the accelerometer and the pic32 are both little endian by default (the lowest address has the LSB)
+        // the accelerations are 16-bit twos compliment numbers, the same as a short
+        acc_read_register(OUT_X_L_A, (unsigned char *) accels, 6);
+        // need to read all 6 bytes in one transaction to get an update.
+        acc_read_register(OUT_X_L_M, (unsigned char *) mags, 6);
+        // read the temperature data. Its a right justified 12 bit two's compliment number
+        acc_read_register(TEMP_OUT_L, (unsigned char *) &temp, 2);
+
+        sprintf(message,"%d %d %d",accels[0],accels[1],accels[2]);
+        int row = 28,col = 32;//Starting row and column for text
+        while(message[k]){//While loop runs until terminating character '/0' is read from the string
+         for(i=0;i<=4;i++){//Loop runs through the 4 'byte-columns' defined in ascii.h
+             for(j=0;j<7;j++){//Loop runs through the 8 lines of each 'byte-column'
+                display_pixel_set(row+j,col+i+5*k,1&(ASCII[message[k]-0x20][i])>>j);//Create Bitmask and write to buffer
+             }
+         }
+        k++;
+        }
+        display_draw();
     }
 
 }
