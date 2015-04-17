@@ -54,18 +54,14 @@
 
 //Function Prototype
 int readADC(void);
-void display_bars(short vals[3], int bar_thick)
+void display_vals(short values[3]);
+void display_bars(short vals[3], int bar_thick);
 
 
+//A prepared ISR if need be (debugging)
 // Timer1 ISR function Frequency: 10kHz   Priority: Level 7
 //void __ISR(_TIMER_1_VECTOR, IPL7SOFT) LEDBrightness()
 //{
-////  This logic could be run in the ewhile(1) loop, but will not guarantee
-////  that OC1RS is reset every time, resulting in a less smooth dimmer i.e.
-//    unsigned int ADCval;
-//    ADCval = readADC();            // read ADC (0-1024)
-//    OC1RS =  (40000*ADCval)/1024;   //convert ADV calue to duty cycle
-//    IFS0bits.T1IF = 0;             // clear interrupt flag
 //}
 
 
@@ -114,7 +110,7 @@ int main(void)
     AD1CHSbits.CH0SA = 0;
     AD1CON1bits.ADON = 1;
 
-    // Set up timer1 for ISR
+    // Set up timer1 for ISR if need be
     T1CONbits.TCKPS = 0b01;         // Prescaler N=8
 //    T1CONbits.TGATE = 0;            //(default)
 //    T1CONbits.TCS = 0;              //(default)
@@ -129,6 +125,7 @@ int main(void)
 
 
     //Use digital ouput pin to power OLED --> this calibrates screen starting pos
+    //each time the pic is reset
     ANSELBbits.ANSB2 = 0; //B2 (Pin 6) as digital pin
     TRISBbits.TRISB2 = 0; //B2 (Pin 6) as output pin
     LATBbits.LATB2 = 1; //Set B2 high to power OLED
@@ -149,27 +146,21 @@ int main(void)
     _CP0_SET_COUNT(0);
     while (1)
     {
-//        _CP0_SET_COUNT(0); // Reset core counter
-//        while(_CP0_GET_COUNT() < 10000000) //The CP0 timer runs at 20MHZ (Half the core frequency)
-//		{ if (PORTBbits.RB13 == 0){
-//                    break; } } //Skip the wait if USER Pin B13 is pushed
-
         if (PORTBbits.RB13 == 1){ 
-            if(_CP0_GET_COUNT()>10000000){
-            LATBINV = 0x0080; // toggle LED1
+            if(_CP0_GET_COUNT()>10000000){//Clock running 20 Mhz (Half the core freq)
+            LATBINV = 0x0080; // toggle LED1 every 10^7 closck cycles=0.5s
             _CP0_SET_COUNT(0);
             }
         }
         else{ LATBbits.LATB7 = 1; } // LED1 ON
 
-//*****This logic is better in an an ISR to guarantee a smoother dimmer*****//
         unsigned int ADCval;
         ADCval = readADC();            // read ADC (0-1024)
         OC1RS =  40000* ADCval/1024;   //convert ADV calue to duty cycle
 
         short accels[3]; // accelerations for the 3 axes
         short mags[3]; // magnetometer readings for the 3 axes
-        short temp;
+        short temp; // temperature reading
 
         // read the accelerometer from all three axes
         // the accelerometer and the pic32 are both little endian by default (the lowest address has the LSB)
@@ -181,9 +172,9 @@ int main(void)
         acc_read_register(TEMP_OUT_L, (unsigned char *) &temp, 2);
 
         //Display axelerometer readings in numbers
-        //display_vals(accels);
-        //Displa accelerometer readings in bars
-        display_bars(accels,4);//with a bar width of 4 pixels
+        //display_vals(accels); //Uncomment to display number values
+        //Displa accelerometer readings in bars, bar wiidth: 4 pixels
+        display_bars(accels,4);
 
     }
 }
