@@ -54,18 +54,19 @@
 
 //Function Prototype
 int readADC(void);
+void display_bars(short vals[3], int bar_thick)
 
 
 // Timer1 ISR function Frequency: 10kHz   Priority: Level 7
-void __ISR(_TIMER_1_VECTOR, IPL7SOFT) LEDBrightness()
-{
-//  This logic could be run in the ewhile(1) loop, but will not guarantee
-//  that OC1RS is reset every time, resulting in a less smooth dimmer i.e.
-    unsigned int ADCval;
-    ADCval = readADC();            // read ADC (0-1024)
-    OC1RS =  (40000*ADCval)/1024;   //convert ADV calue to duty cycle
-    IFS0bits.T1IF = 0;             // clear interrupt flag
-}
+//void __ISR(_TIMER_1_VECTOR, IPL7SOFT) LEDBrightness()
+//{
+////  This logic could be run in the ewhile(1) loop, but will not guarantee
+////  that OC1RS is reset every time, resulting in a less smooth dimmer i.e.
+//    unsigned int ADCval;
+//    ADCval = readADC();            // read ADC (0-1024)
+//    OC1RS =  (40000*ADCval)/1024;   //convert ADV calue to duty cycle
+//    IFS0bits.T1IF = 0;             // clear interrupt flag
+//}
 
 
 int main(void)
@@ -117,43 +118,58 @@ int main(void)
     T1CONbits.TCKPS = 0b01;         // Prescaler N=8
 //    T1CONbits.TGATE = 0;            //(default)
 //    T1CONbits.TCS = 0;              //(default)
-    PR1 = 499;	// period = (PR1+1) * N * 25ns = 0.1ms, 10 kHz
-    TMR1 = 0;                       // initialize timer to 0
-    T1CONbits.ON = 1;               // turn on Timer1
-    // Set Interrupt for Timer1
-    IPC1bits.T1IP = 7;              // INT step 4: priority 7
-    IPC1bits.T1IS = 0;              //             subpriority 0
-    IFS0bits.T1IF = 0;              // INT step 5: clear interrupt flag
-    IEC0bits.T1IE = 1;              // INT step 6: enable interrupt
+//    PR1 = 499;	// period = (PR1+1) * N * 25ns = 0.1ms, 10 kHz
+//    TMR1 = 0;                       // initialize timer to 0
+//    T1CONbits.ON = 1;               // turn on Timer1
+//    // Set Interrupt for Timer1
+//    IPC1bits.T1IP = 7;              // INT step 4: priority 7
+//    IPC1bits.T1IS = 0;              //             subpriority 0
+//    IFS0bits.T1IF = 0;              // INT step 5: clear interrupt flag
+//    IEC0bits.T1IE = 1;              // INT step 6: enable interrupt
 
-    
-    __builtin_enable_interrupts(); //re enable interrupts after configuration is complete
+
+    //Use digital ouput pin to power OLED --> this calibrates screen starting pos
+    ANSELBbits.ANSB2 = 0; //B2 (Pin 6) as digital pin
+    TRISBbits.TRISB2 = 0; //B2 (Pin 6) as output pin
+    LATBbits.LATB2 = 1; //Set B2 high to power OLED
+    //Wait 0.05s for capacitors to charge before initializing the screen
+    _CP0_SET_COUNT(0); // Reset core counter
+    while(_CP0_GET_COUNT() < 1000000){
+        ;} //CP0 timer 20MHz --> wait 0.05s
+
+
 
     acc_setup(); //Set-up accelorometer chip
-    display_init();
+    __builtin_enable_interrupts(); //re enable interrupts after configuration is complete
 
-    short accels[3]; // accelerations for the 3 axes
-    short mags[3]; // magnetometer readings for the 3 axes
-    short temp;
-
-    char message[50]; //char array to OLED message
-    int i,j,k=0; //Counter variables
+    //Initialize display
+    display_init();//This init disables the interrupts already.
     
     // Main while loop
+    _CP0_SET_COUNT(0);
     while (1)
     {
-        _CP0_SET_COUNT(0); // Reset core counter
-        while(_CP0_GET_COUNT() < 10000000) //The CP0 timer runs at 20kHZ (Half the core frequency)
-		{ if (PORTBbits.RB13 == 0){
-                    break; } } //Skip the wait if USER Pin B13 is pushed
+//        _CP0_SET_COUNT(0); // Reset core counter
+//        while(_CP0_GET_COUNT() < 10000000) //The CP0 timer runs at 20MHZ (Half the core frequency)
+//		{ if (PORTBbits.RB13 == 0){
+//                    break; } } //Skip the wait if USER Pin B13 is pushed
 
-        if (PORTBbits.RB13 == 1){ LATBINV = 0x0080; } // toggle LED1
+        if (PORTBbits.RB13 == 1){ 
+            if(_CP0_GET_COUNT()>10000000){
+            LATBINV = 0x0080; // toggle LED1
+            _CP0_SET_COUNT(0);
+            }
+        }
         else{ LATBbits.LATB7 = 1; } // LED1 ON
 
 //*****This logic is better in an an ISR to guarantee a smoother dimmer*****//
-//        unsigned int ADCval;
-//        ADCval = readADC();            // read ADC (0-1024)
-//        OC1RS =  40000* ADCval/1024;   //convert ADV calue to duty cycle
+        unsigned int ADCval;
+        ADCval = readADC();            // read ADC (0-1024)
+        OC1RS =  40000* ADCval/1024;   //convert ADV calue to duty cycle
+
+        short accels[3]; // accelerations for the 3 axes
+        short mags[3]; // magnetometer readings for the 3 axes
+        short temp;
 
         // read the accelerometer from all three axes
         // the accelerometer and the pic32 are both little endian by default (the lowest address has the LSB)
@@ -164,19 +180,12 @@ int main(void)
         // read the temperature data. Its a right justified 12 bit two's compliment number
         acc_read_register(TEMP_OUT_L, (unsigned char *) &temp, 2);
 
-        sprintf(message,"%d %d %d",accels[0],accels[1],accels[2]);
-        int row = 28,col = 32;//Starting row and column for text
-        while(message[k]){//While loop runs until terminating character '/0' is read from the string
-         for(i=0;i<=4;i++){//Loop runs through the 4 'byte-columns' defined in ascii.h
-             for(j=0;j<7;j++){//Loop runs through the 8 lines of each 'byte-column'
-                display_pixel_set(row+j,col+i+5*k,1&(ASCII[message[k]-0x20][i])>>j);//Create Bitmask and write to buffer
-             }
-         }
-        k++;
-        }
-        display_draw();
-    }
+        //Display axelerometer readings in numbers
+        //display_vals(accels);
+        //Displa accelerometer readings in bars
+        display_bars(accels,4);//with a bar width of 4 pixels
 
+    }
 }
 
 // ADC value reading
@@ -196,3 +205,60 @@ int readADC(void)
     a = ADC1BUF0;
     return a;
 }
+
+//Displaying an array of 3 values to the screen
+void display_vals(short values[3]){
+
+    int i,j,k=0; //Counter variables
+    char message[50]; //char array to OLED message
+    sprintf(message,"%d %d %d\0",values[0],values[1],values[2]);
+    int row = 28,col = 10;//Starting row and column for text
+    display_clear();
+    while(message[k]){//While loop runs until terminating character '/0' is read from the string
+     for(i=0;i<=4;i++){//Loop runs through the 4 'byte-columns' defined in ascii.h
+         for(j=0;j<7;j++){//Loop runs through the 8 lines of each 'byte-column'
+            display_pixel_set(row+j,col+i+5*k,1&(ASCII[message[k]-0x20][i])>>j);//Create Bitmask and write to buffer
+         }
+     }
+    k++;
+    }
+display_draw();
+}
+
+//display bars in x-y direction
+void display_bars(short vals[3], int bar_thick){
+    int x,y;
+    
+    x = vals[0]*64/16384; //This norms the x value to take 62 pixels (half the screenwidth)
+    //so that the bar reaches the edge of the screen for 1g in the respective direction
+    y = vals [1]*32/16348;//This norms the y value to take 32 pixels (half the screen hight)
+    //so that the bar reaches the edge of the screen for 1g in the respective direction
+
+    display_clear();//Clear the bars from the previous reading
+
+    int i=0;//Counter variable through the bar length pixels
+    int j=0;//COunter variable through the bar thickness pixels
+    for(i=0;i<64;i++){
+        for(j=-bar_thick/2;j<bar_thick/2;j++){
+            if(x>0){
+                display_pixel_set(32+j,64-i,i<=x); //The signs here depend on the orientaiton of
+                //the OLED relative to the accelerometer
+            }
+            else if(x<0){
+                display_pixel_set(32+j,64+i,-i>=x);
+            }
+        }
+    }
+    for(i=0;i<32;i++){
+        for(j=-bar_thick/2;j<bar_thick/2;j++){
+           if(y>0){
+                display_pixel_set(32-i,64+j,i<=y);
+           }
+           else if(y<0){
+               display_pixel_set(32+i,64+j,-i>=y);
+           }
+        }
+    }
+    display_draw();
+}
+

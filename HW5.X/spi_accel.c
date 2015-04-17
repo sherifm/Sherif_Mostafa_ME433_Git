@@ -46,6 +46,7 @@ void acc_write_register(unsigned char reg, unsigned char data) {
 
 
 void acc_setup() {
+  ANSELBbits.ANSB14 = 0; //Turn analog off on RB 14 for digital use with SCK1
   TRISBbits.TRISB4 = 0; // set CS to output and digital if necessary
   //SM: NO ANSELB.ANSB4 bit so I'm assuming B10 only has digital functionality
   CS = 1;
@@ -74,7 +75,7 @@ void acc_setup() {
   acc_write_register(CTRL1, 0xAF);
 
   // SM: set the accelerometer sensitivitiy to plus/minus 2g, anti-alias 50Hz
-  acc_write_register(CTRL2,0x60);
+  acc_write_register(CTRL2,0x00);
 
   // 50 Hz magnetometer, high resolution, temperature sensor on
   acc_write_register(CTRL5, 0xF0);
