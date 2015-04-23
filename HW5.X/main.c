@@ -9,7 +9,6 @@
 #include<sys/attribs.h>             // __ISR macro
 #include"i2c_display.h"
 #include"i2c_master_int.h"
-#include"ascii.h"
 #include"accel.h"
 
 
@@ -54,8 +53,6 @@
 
 //Function Prototype
 int readADC(void);
-void display_vals(short values[3]);
-void display_bars(short vals[3], int bar_thick);
 
 
 //A prepared ISR if need be (debugging)
@@ -123,25 +120,12 @@ int main(void)
 //    IFS0bits.T1IF = 0;              // INT step 5: clear interrupt flag
 //    IEC0bits.T1IE = 1;              // INT step 6: enable interrupt
 
-
-    //Use digital ouput pin to power OLED --> this calibrates screen starting pos
-    //each time the pic is reset
-    ANSELBbits.ANSB2 = 0; //B2 (Pin 6) as digital pin
-    TRISBbits.TRISB2 = 0; //B2 (Pin 6) as output pin
-    LATBbits.LATB2 = 1; //Set B2 high to power OLED
-    //Wait 0.05s for capacitors to charge before initializing the screen
-    _CP0_SET_COUNT(0); // Reset core counter
-    while(_CP0_GET_COUNT() < 1000000){
-        ;} //CP0 timer 20MHz --> wait 0.05s
-
-
-
     acc_setup(); //Set-up accelorometer chip
     __builtin_enable_interrupts(); //re enable interrupts after configuration is complete
 
     //Initialize display
     display_init();//This init disables the interrupts already.
-    
+
     // Main while loop
     _CP0_SET_COUNT(0);
     while (1)
@@ -195,61 +179,5 @@ int readADC(void)
 	while (!AD1CON1bits.DONE) {;}
     a = ADC1BUF0;
     return a;
-}
-
-//Displaying an array of 3 values to the screen
-void display_vals(short values[3]){
-
-    int i,j,k=0; //Counter variables
-    char message[50]; //char array to OLED message
-    sprintf(message,"%d %d %d\0",values[0],values[1],values[2]);
-    int row = 28,col = 10;//Starting row and column for text
-    display_clear();
-    while(message[k]){//While loop runs until terminating character '/0' is read from the string
-     for(i=0;i<=4;i++){//Loop runs through the 4 'byte-columns' defined in ascii.h
-         for(j=0;j<7;j++){//Loop runs through the 8 lines of each 'byte-column'
-            display_pixel_set(row+j,col+i+5*k,1&(ASCII[message[k]-0x20][i])>>j);//Create Bitmask and write to buffer
-         }
-     }
-    k++;
-    }
-display_draw();
-}
-
-//display bars in x-y direction
-void display_bars(short vals[3], int bar_thick){
-    int x,y;
-    
-    x = vals[0]*64/16384; //This norms the x value to take 62 pixels (half the screenwidth)
-    //so that the bar reaches the edge of the screen for 1g in the respective direction
-    y = vals [1]*32/16348;//This norms the y value to take 32 pixels (half the screen hight)
-    //so that the bar reaches the edge of the screen for 1g in the respective direction
-
-    display_clear();//Clear the bars from the previous reading
-
-    int i=0;//Counter variable through the bar length pixels
-    int j=0;//COunter variable through the bar thickness pixels
-    for(i=0;i<64;i++){
-        for(j=-bar_thick/2;j<bar_thick/2;j++){
-            if(x>0){
-                display_pixel_set(32+j,64-i,i<=x); //The signs here depend on the orientaiton of
-                //the OLED relative to the accelerometer
-            }
-            else if(x<0){
-                display_pixel_set(32+j,64+i,-i>=x);
-            }
-        }
-    }
-    for(i=0;i<32;i++){
-        for(j=-bar_thick/2;j<bar_thick/2;j++){
-           if(y>0){
-                display_pixel_set(32-i,64+j,i<=y);
-           }
-           else if(y<0){
-               display_pixel_set(32+i,64+j,-i>=y);
-           }
-        }
-    }
-    display_draw();
 }
 
